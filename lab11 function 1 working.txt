@@ -1,0 +1,107 @@
+const fs = require("node:fs");
+const fsPromises = fs.promises;
+const PNG = require("pngjs").PNG;
+const path = require("path");
+const yauzl = require("yauzl-promise");
+const { pipeline } = require("stream/promises");
+
+async function unzip(zipFilePath, outputDir) {
+  try {
+    console.log(`Ensuring output directory exists: ${outputDir}`);
+    await fs.promises.mkdir(outputDir, { recursive: true });
+
+    const zipfile = await yauzl.open(zipFilePath, {
+      validateFilenames: false,
+      supportMacArchive: false,
+    });
+
+    for await (const entry of zipfile) {
+      // console.log("Processing entry:" + entry.filename);
+      const entryPath = path.join(outputDir, entry.filename);
+
+      if (entry.filename.endsWith("/")) {
+        // console.log(`Creating directory: ${entryPath}`);
+        await fs.promises.mkdir(entryPath, { recursive: true });
+        continue;
+      }
+
+      // console.log(`Creating file: ${entryPath}`);
+
+      await fs.promises.mkdir(path.dirname(entryPath), { recursive: true });
+
+      try {
+        // console.log(`Attempting to open read stream for ${entry.filename}`);
+        const readStream = await entry.openReadStream({ decompress: true });
+        // console.log(`Opened read stream for ${entry.filename}`);
+
+        const writeStream = fs.createWriteStream(entryPath);
+        await pipeline(readStream, writeStream);
+        // console.log(`Written successfully: ${entryPath}`);
+      } catch (err) {
+        // console.log(`Error writing ${entryPath}:`, err);
+        continue;
+      }
+    }
+
+    console.log("Extraction operation complete");
+    await zipfile.close();
+  } catch (error) {
+    console.log("An error occurred during extraction:", error);
+  }
+}
+
+(async () => {
+  const zipFilePath =
+    "C:\\Users\\downi\\OneDrive\\Desktop\\FSWD\\Term 1\\Comp1320 (Java)\\Class 11\\Lab 11\\startingcode\\myfile.zip";
+  const outputDir =
+    "C:\\Users\\downi\\OneDrive\\Desktop\\FSWD\\Term 1\\Comp1320 (Java)\\Class 11\\Lab 11\\startingcode\\unzipped";
+  await unzip(zipFilePath, outputDir);
+})();
+
+// async function isPngFile(entry) {
+//   const readStream = await entry.openReadStream();
+//   const signatureBuffer = Buffer.alloc(8);
+
+//   await new Promise((resolve, reject) => {
+//     readStream.once("readable", () => {
+//       readStream.read(8).copy(signatureBuffer);
+//       resolve();
+//     });
+//     readStream.once("error", reject);
+//   });
+
+//   return signatureBuffer.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+// }
+
+// /**
+//  * Description: decompress file from given pathIn, write to given pathOut
+//  *
+//  * @param {string} pathIn
+//  * @param {string} pathOut
+//  * @return {promise}
+//  */
+// const unzip = (pathIn, pathOut) => {};
+
+// /**
+//  * Description: read all the png files from given directory and return Promise containing array of each png file path
+//  *
+//  * @param {string} path
+//  * @return {promise}
+//  */
+// const readDir = (dir) => {};
+
+// /**
+//  * Description: Read in png file by given pathIn,
+//  * convert to grayscale and write to given pathOut
+//  *
+//  * @param {string} filePath
+//  * @param {string} pathProcessed
+//  * @return {promise}
+//  */
+// const grayScale = (pathIn, pathOut) => {};
+
+// module.exports = {
+//   unzip,
+//   readDir,
+//   grayScale,
+// };

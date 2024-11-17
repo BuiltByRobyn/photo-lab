@@ -1,0 +1,182 @@
+const fs = require("node:fs");
+const fsPromises = fs.promises;
+const PNG = require("pngjs").PNG;
+const path = require("path");
+const yauzl = require("yauzl-promise");
+const { pipeline } = require("stream/promises");
+
+async function unzip(zipFilePath, outputDir) {
+  try {
+    await fs.promises.mkdir(outputDir, { recursive: true });
+
+    const zipfile = await yauzl.open(zipFilePath, {
+      validateFilenames: false,
+      supportMacArchive: false,
+    });
+
+    for await (const entry of zipfile) {
+      const entryPath = path.join(outputDir, entry.filename);
+
+      if (entry.filename.endsWith("/")) {
+        await fs.promises.mkdir(entryPath, { recursive: true });
+        continue;
+      }
+
+      await fs.promises.mkdir(path.dirname(entryPath), { recursive: true });
+
+      try {
+        const readStream = await entry.openReadStream({ decompress: true });
+
+        const writeStream = fs.createWriteStream(entryPath);
+        await pipeline(readStream, writeStream);
+      } catch (err) {
+        continue;
+      }
+    }
+
+    console.log("Extraction operation complete");
+    await zipfile.close();
+  } catch (error) {
+    console.log("An error occurred during extraction:", error);
+  }
+}
+
+async function readDir(directoryPath) {
+  try {
+    const files = await fs.promises.readdir(directoryPath, {
+      withFileTypes: true,
+    });
+    const pngFiles = [];
+
+    for (const file of files) {
+      if (file.isFile() && path.extname(file.name).toLowerCase() === ".png") {
+        const filePath = path.join(directoryPath, file.name);
+
+        const fileHandle = await fs.promises.open(filePath, "r");
+        const buffer = Buffer.alloc(8);
+        await fileHandle.read(buffer, 0, 8, 0);
+        await fileHandle.close();
+
+        if (
+          buffer.equals(
+            Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+          )
+        ) {
+          pngFiles.push(filePath);
+        }
+      }
+    }
+
+    console.log(`Filtered PNG files: ${pngFiles.length}`);
+    return pngFiles;
+  } catch (error) {
+    console.log(`Error reading directory ${directoryPath}:`, error);
+    throw error;
+  }
+}
+
+// Function to parse a single PNG file and extract pixel data
+async function parsePngFileAsync(filePath) {
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(filePath)
+      .pipe(new PNG())
+      .on("parsed", function () {
+        const pixels = [];
+        for (let y = 0; y < this.height; y++) {
+          for (let x = 0; x < this.width; x++) {
+            const idx = (y * this.width + x) * 4;
+            const r = this.data[idx];
+            const g = this.data[idx + 1];
+            const b = this.data[idx + 2];
+            const a = this.data[idx + 3];
+            pixels.push({ r, g, b, a });
+          }
+        }
+        resolve({ filePath, pixels, width: this.width, height: this.height });
+      })
+      .on("error", (err) => {
+        console.log(`Error parsing PNG file ${filePath}:`, err);
+        reject(err);
+      });
+  });
+}
+
+// Function to parse an array of PNG file paths
+async function parsePngFiles(pngFilePaths) {
+  try {
+    const pixelDataArray = [];
+    for (const filePath of pngFilePaths) {
+      const pixelData = await parsePngFileAsync(filePath);
+      pixelDataArray.push(pixelData);
+    }
+    return pixelDataArray;
+  } catch (error) {
+    console.log("Error parsing PNG files:", error);
+    throw error;
+  }
+}
+
+function grayScale(pixelDataArray) {
+  for (const file of pixelDataArray) {
+    for (let i = 0; i < file.pixels.length; i++) {
+      const { r, g, b, a } = file.pixels[i];
+      const gray = Math.round((r + g + b) / 3);
+      file.pixels[i] = { r: gray, g: gray, b: gray, a };
+    }
+  }
+  return pixelDataArray;
+}
+
+function saveGrayscaleImage(pixelDataArray, outputDir) {
+  for (const file of pixelDataArray) {
+    const png = new PNG({ width: file.width, height: file.height });
+
+    for (let y = 0; y < png.height; y++) {
+      for (let x = 0; x < png.width; x++) {
+        const idx = (y * png.width + x) * 4;
+        const pixel = file.pixels[y * png.width + x];
+        png.data[idx] = pixel.r;
+        png.data[idx + 1] = pixel.g;
+        png.data[idx + 2] = pixel.b;
+        png.data[idx + 3] = pixel.a;
+      }
+    }
+
+    const originalFileName = path.basename(
+      file.filePath,
+      path.extname(file.filePath)
+    );
+    const outputFilePath = path.join(
+      outputDir,
+      `${originalFileName}_grayscaled.png`
+    );
+
+    png.pack().pipe(fs.createWriteStream(outputFilePath));
+    console.log(`Saved grayscale image to: ${outputFilePath}`);
+  }
+}
+
+(async () => {
+  const zipFilePath =
+    "C:\\Users\\downi\\OneDrive\\Desktop\\FSWD\\Term 1\\Comp1320 (Java)\\Class 11\\Lab 11\\startingcode\\myfile.zip";
+  const outputDir =
+    "C:\\Users\\downi\\OneDrive\\Desktop\\FSWD\\Term 1\\Comp1320 (Java)\\Class 11\\Lab 11\\startingcode\\unzipped";
+  const grayOutputDir =
+    "C:\\Users\\downi\\OneDrive\\Desktop\\FSWD\\Term 1\\Comp1320 (Java)\\Class 11\\Lab 11\\startingcode\\grayscaled";
+
+  await fs.promises.mkdir(grayOutputDir, { recursive: true });
+
+  await unzip(zipFilePath, outputDir);
+  const pngFiles = await readDir(outputDir);
+  const pixelDataArray = await parsePngFiles(pngFiles);
+
+  const grayscalePixelDataArray = grayScale(pixelDataArray);
+
+  saveGrayscaleImage(grayscalePixelDataArray, grayOutputDir);
+})();
+
+// module.exports = {
+//   unzip,
+//   readDir,
+//   grayScale,
+// };
