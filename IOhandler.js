@@ -4,10 +4,16 @@ const path = require("path");
 const yauzl = require("yauzl-promise");
 const { pipeline } = require("stream/promises");
 
-async function unzip(zipFilePath, outputDir) {
+async function createDirectory(outputDir) {
   try {
     await fs.promises.mkdir(outputDir, { recursive: true });
-
+  } catch (error) {
+    console.log("Error creating directory:", error);
+    throw error;
+  }
+}
+async function unzip(zipFilePath, outputDir) {
+  try {
     const zipfile = await yauzl.open(zipFilePath, {
       validateFilenames: false,
       supportMacArchive: false,
@@ -29,7 +35,7 @@ async function unzip(zipFilePath, outputDir) {
         const writeStream = fs.createWriteStream(entryPath);
         await pipeline(readStream, writeStream);
       } catch (err) {
-        console.error(`Error extracting ${entry.filename}:`, err);
+        console.log(`Error extracting ${entry.filename}:`, err);
         continue;
       }
     }
@@ -38,6 +44,7 @@ async function unzip(zipFilePath, outputDir) {
     await zipfile.close();
   } catch (error) {
     console.log("An error occurred during extraction:", error);
+    throw error;
   }
 }
 
@@ -94,18 +101,19 @@ async function grayScale(pathIn, pathOut) {
             resolve();
           })
           .on("error", (err) => {
-            console.error(`Error saving image: ${pathOut}`, err);
+            console.log(`Error saving image: ${pathOut}`, err);
             reject(err);
           });
       })
       .on("error", (err) => {
-        console.error(`Error processing image ${pathIn}:`, err);
+        console.log(`Error processing image ${pathIn}:`, err);
         reject(err);
       });
   });
 }
 
 module.exports = {
+  createDirectory,
   unzip,
   readDir,
   grayScale,

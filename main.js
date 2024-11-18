@@ -1,14 +1,13 @@
-const { unzip, readDir, grayScale } = require("./IOhandler");
-const fs = require("node:fs");
+const { createDirectory, unzip, readDir, grayScale } = require("./IOhandler");
 const path = require("path");
 
-(async () => {
+async function processImages() {
   const zipFilePath = path.resolve(__dirname, "myfile.zip");
   const outputDir = path.resolve(__dirname, "unzipped");
   const grayOutputDir = path.resolve(__dirname, "grayscaled");
 
   try {
-    await fs.promises.mkdir(grayOutputDir, { recursive: true });
+    await createDirectory(grayOutputDir);
 
     await unzip(zipFilePath, outputDir);
     const pngFiles = await readDir(outputDir);
@@ -21,6 +20,7 @@ const path = require("path");
 
     console.log("All images have been processed.");
   } catch (error) {
-    console.error("Error during image processing:", error);
+    console.log("Error during image processing:", error);
   }
-})();
+}
+processImages();
